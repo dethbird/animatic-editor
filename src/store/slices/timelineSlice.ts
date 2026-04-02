@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { Asset } from '../../types/media';
-import type { Clip, Track } from '../../types/timeline';
+import type { Clip, Marker, Track } from '../../types/timeline';
 import type { ProjectSlice } from './projectSlice';
 import { DEFAULT_PX_PER_SECOND } from '../../lib/projectDefaults';
 
@@ -10,11 +10,14 @@ export type TimelineSlice = {
   // actions
   setZoom: (pxPerSecond: number) => void;
   addAsset: (asset: Asset) => void;
+  updateAsset: (assetId: string, patch: Partial<Asset>) => void;
   addClip: (trackId: string, clip: Clip) => void;
   updateClip: (trackId: string, clipId: string, patch: Partial<Clip>) => void;
   removeClip: (trackId: string, clipId: string) => void;
   moveClip: (trackId: string, clipId: string, start: number) => void;
   addTrack: (track: Track) => void;
+  addMarker: (marker: Marker) => void;
+  setSequenceDuration: (duration: number) => void;
 };
 
 // Timeline mutations all operate on the active sequence inside project.
@@ -106,6 +109,42 @@ export const createTimelineSlice: StateCreator<
     const sequences = project.sequences.map((seq) => {
       if (seq.id !== project.activeSequenceId) return seq;
       return { ...seq, tracks: [...seq.tracks, track] };
+    });
+    set({ project: { ...project, sequences, updatedAt: new Date().toISOString() }, dirty: true });
+  },
+
+  updateAsset: (assetId, patch) => {
+    set((state) => {
+      if (!state.project) return {};
+      return {
+        project: {
+          ...state.project,
+          assets: state.project.assets.map((a) =>
+            a.id === assetId ? { ...a, ...patch } : a,
+          ),
+          updatedAt: new Date().toISOString(),
+        },
+        dirty: true,
+      };
+    });
+  },
+
+  addMarker: (marker) => {
+    const { project } = get();
+    if (!project) return;
+    const sequences = project.sequences.map((seq) => {
+      if (seq.id !== project.activeSequenceId) return seq;
+      return { ...seq, markers: [...seq.markers, marker] };
+    });
+    set({ project: { ...project, sequences, updatedAt: new Date().toISOString() }, dirty: true });
+  },
+
+  setSequenceDuration: (duration) => {
+    const { project } = get();
+    if (!project) return;
+    const sequences = project.sequences.map((seq) => {
+      if (seq.id !== project.activeSequenceId) return seq;
+      return { ...seq, duration };
     });
     set({ project: { ...project, sequences, updatedAt: new Date().toISOString() }, dirty: true });
   },

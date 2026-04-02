@@ -11,6 +11,7 @@ pub fn run() {
             // system
             commands::system::check_ffmpeg,
             commands::system::check_ffprobe,
+            commands::system::read_text_file,
             // project
             commands::project::new_project,
             commands::project::save_project,
