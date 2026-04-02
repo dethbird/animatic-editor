@@ -4,6 +4,7 @@ import BottomPanel from "./BottomPanel";
 import ProgramMonitor from "../monitor/ProgramMonitor";
 import TransportBar from "../transport/TransportBar";
 import Toolbar from "./Toolbar";
+import { usePlaybackEngine } from "../../features/playback/usePlaybackEngine";
 
 /**
  * AppShell — the top-level 4-panel editor layout.
@@ -20,6 +21,8 @@ import Toolbar from "./Toolbar";
  *  └─────────────────────────────────────────────────┘
  */
 export default function AppShell() {
+  usePlaybackEngine();
+
   return (
     <div className="flex flex-col h-full bg-[#1a1a1a] overflow-hidden">
       {/* Top toolbar */}
