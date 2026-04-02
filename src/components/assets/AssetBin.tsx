@@ -1,14 +1,22 @@
 import { useAppStore } from "../../store/useAppStore";
+import { generateId } from "../../lib/ids";
+import { DEFAULT_CLIP_DURATION_FALLBACK } from "../../lib/projectDefaults";
 import AssetStatusBadge from "./AssetStatusBadge";
+import type { Clip } from "../../types/timeline";
 
 /**
  * AssetBin — lists all assets in the current project.
- * Selecting an asset updates the selection slice.
+ *
+ * Selecting an asset highlights it. When a track is also selected,
+ * "Insert at Playhead" places the asset as a new clip at currentTime.
  */
 export default function AssetBin() {
   const project = useAppStore((s) => s.project);
   const selectedAssetId = useAppStore((s) => s.selectedAssetId);
   const selectAsset = useAppStore((s) => s.selectAsset);
+  const selectedTrackId = useAppStore((s) => s.selectedTrackId);
+  const currentTime = useAppStore((s) => s.currentTime);
+  const addClip = useAppStore((s) => s.addClip);
 
   if (!project || project.assets.length === 0) {
     return (
@@ -18,11 +26,59 @@ export default function AssetBin() {
     );
   }
 
+  const selectedAsset = project.assets.find((a) => a.id === selectedAssetId);
+  const canInsert =
+    selectedAsset?.status === "ready" &&
+    selectedTrackId != null;
+
+  function handleInsertAtPlayhead() {
+    if (!canInsert || !selectedAsset || !selectedTrackId) return;
+
+    const clipType: Clip["type"] = selectedAsset.type === "image" ? "image" : "audio";
+    const duration = selectedAsset.duration ?? DEFAULT_CLIP_DURATION_FALLBACK;
+
+    const clip: Clip = {
+      id: generateId(),
+      assetId: selectedAsset.id,
+      type: clipType,
+      start: currentTime,
+      duration,
+      inPoint: 0,
+      label: selectedAsset.name,
+      volume: clipType === "audio" ? 1.0 : undefined,
+    };
+    addClip(selectedTrackId, clip);
+  }
+
   const images = project.assets.filter((a) => a.type === "image");
   const audio = project.assets.filter((a) => a.type === "audio");
 
   return (
     <div className="flex flex-col">
+      {/* Insert toolbar */}
+      <div className="px-3 py-2 border-b border-[#2a2a2a]">
+        <button
+          onClick={handleInsertAtPlayhead}
+          disabled={!canInsert}
+          title={
+            !selectedAsset
+              ? "Select an asset first"
+              : !selectedTrackId
+              ? "Select a track first"
+              : selectedAsset.status !== "ready"
+              ? "Asset is not ready"
+              : "Insert selected asset at playhead on selected track"
+          }
+          className={[
+            "w-full py-1 px-2 rounded text-[11px] font-medium transition-colors",
+            canInsert
+              ? "bg-blue-700 hover:bg-blue-600 text-white cursor-pointer"
+              : "bg-[#2a2a2a] text-[#555] cursor-not-allowed",
+          ].join(" ")}
+        >
+          Insert at Playhead
+        </button>
+      </div>
       {images.length > 0 && (
         <AssetGroup label="Images">
           {images.map((asset) => (
