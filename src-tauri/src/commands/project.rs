@@ -60,29 +60,44 @@ pub fn open_project(path: String) -> Result<serde_json::Value, String> {
 
 // ── open_file_dialog ─────────────────────────────────────────────────────────
 
+/// Opens a native file-picker dialog.
+/// Uses the async callback API + oneshot channel to avoid deadlocking on Linux,
+/// where GTK dialogs must run on the main thread but blocking_pick_file() can
+/// deadlock when Tauri also runs sync commands on the main thread.
 #[tauri::command]
-pub fn open_file_dialog(
+pub async fn open_file_dialog(
     app: tauri::AppHandle,
     filters: Vec<DialogFilter>,
 ) -> Option<String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
     let mut builder = app.dialog().file();
     for f in &filters {
-        builder = builder.add_filter(&f.name, &f.extensions.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        builder = builder.add_filter(
+            &f.name,
+            &f.extensions.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        );
     }
-    builder
-        .blocking_pick_file()
-        .map(|p| p.to_string())
+    builder.pick_file(move |path| {
+        let _ = tx.send(path.map(|p| p.to_string()));
+    });
+    rx.await.unwrap_or(None)
 }
 
 // ── save_file_dialog ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn save_file_dialog(app: tauri::AppHandle, default_name: String) -> Option<String> {
+pub async fn save_file_dialog(
+    app: tauri::AppHandle,
+    default_name: String,
+) -> Option<String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
         .set_file_name(&default_name)
-        .blocking_save_file()
-        .map(|p| p.to_string())
+        .save_file(move |path| {
+            let _ = tx.send(path.map(|p| p.to_string()));
+        });
+    rx.await.unwrap_or(None)
 }
 
 // ── helper types ─────────────────────────────────────────────────────────────

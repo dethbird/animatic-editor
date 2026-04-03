@@ -14,6 +14,9 @@ import { generateId } from "../../lib/ids";
 
 /**
  * Toolbar — top bar with New / Open / Save / Import / Add Image / Add Audio / Export actions.
+ *
+ * Uses only React state for prompts/alerts — Tauri's WebView does not support
+ * window.prompt / window.alert on Linux.
  */
 export default function Toolbar() {
   const project = useAppStore((s) => s.project);
@@ -24,12 +27,27 @@ export default function Toolbar() {
   const resetExport = useAppStore((s) => s.resetExport);
 
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [statusKind, setStatusKind] = useState<"info" | "error">("info");
+  // Inline "New Project" prompt — replaces window.prompt which crashes Tauri on Linux
+  const [showNewInput, setShowNewInput] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("Untitled Animatic");
+
   const isExporting = exportStatus === "running";
 
+  function notify(msg: string, kind: "info" | "error" = "info") {
+    setImportStatus(msg);
+    setStatusKind(kind);
+  }
+
   // ── New ───────────────────────────────────────────────────────────────────
-  const handleNew = async () => {
-    const name = window.prompt("Project name:", "Untitled Animatic");
-    if (!name) return;
+  const handleNew = () => {
+    setNewProjectName("Untitled Animatic");
+    setShowNewInput(true);
+  };
+
+  const confirmNew = async () => {
+    const name = newProjectName.trim() || "Untitled Animatic";
+    setShowNewInput(false);
     await newProjectAction(name);
     setImportStatus(null);
   };
@@ -48,7 +66,7 @@ export default function Toolbar() {
   // ── Import Fountain JSON ──────────────────────────────────────────────────
   const handleImport = async () => {
     if (!project) {
-      window.alert("Create a project first (New).");
+      notify("Create a project first (New).", "error");
       return;
     }
 
@@ -68,12 +86,12 @@ export default function Toolbar() {
       const raw = await invoke<string>("read_text_file", { path: filePath });
       payload = JSON.parse(raw) as FountainImportPayload;
     } catch {
-      window.alert("Failed to read or parse the JSON file.");
+      notify("Failed to read or parse the JSON file.", "error");
       return;
     }
 
     if (!Array.isArray(payload.panels) || payload.panels.length === 0) {
-      window.alert("No panels found in the JSON file.");
+      notify("No panels found in the JSON file.", "error");
       return;
     }
 
@@ -119,8 +137,8 @@ export default function Toolbar() {
         width: info.width,
         height: info.height,
       });
-    } catch {
-      window.alert("Could not probe that file. Is ffprobe installed?");
+    } catch (err) {
+      notify(`Could not probe image: ${err}. Is ffprobe installed?`, "error");
     }
   };
 
@@ -156,15 +174,46 @@ export default function Toolbar() {
         sampleRate: info.sampleRate,
         channels: info.channels,
       });
-    } catch {
-      window.alert("Could not probe that file. Is ffprobe installed?");
+    } catch (err) {
+      notify(`Could not probe audio: ${err}. Is ffprobe installed?`, "error");
     }
   };
 
   const noProject = !project;
 
   return (
-    <div className="flex items-center gap-1 px-3 py-1.5 bg-[#252525] border-b border-[#333] shrink-0 select-none flex-wrap">
+    <>
+      {/* Inline "New Project" input — replaces window.prompt */}
+      {showNewInput && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1e2a3a] border-b border-blue-800 shrink-0">
+          <span className="text-[11px] text-blue-300 shrink-0">Project name:</span>
+          <input
+            autoFocus
+            type="text"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmNew();
+              if (e.key === "Escape") setShowNewInput(false);
+            }}
+            className="flex-1 bg-[#0d1b2a] border border-blue-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-400"
+          />
+          <button
+            onClick={confirmNew}
+            className="px-3 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
+          >
+            Create
+          </button>
+          <button
+            onClick={() => setShowNewInput(false)}
+            className="px-3 py-0.5 bg-[#333] hover:bg-[#444] text-[#ccc] text-xs rounded"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1 px-3 py-1.5 bg-[#252525] border-b border-[#333] shrink-0 select-none flex-wrap">
       <span className="text-[#aaa] font-semibold text-xs tracking-widest mr-4 uppercase">
         Animatic Editor
       </span>
@@ -224,9 +273,18 @@ export default function Toolbar() {
         </span>
       )}
 
-      {/* Import progress indicator */}
+      {/* Import progress / error indicator */}
       {importStatus && (
-        <span className="ml-3 text-[11px] text-[#888] italic">{importStatus}</span>
+        <span
+          className={[
+            "ml-3 text-[11px] italic cursor-pointer",
+            statusKind === "error" ? "text-red-400" : "text-[#888]",
+          ].join(" ")}
+          onClick={() => setImportStatus(null)}
+          title="Click to dismiss"
+        >
+          {importStatus}
+        </span>
       )}
 
       {/* Project name */}
@@ -236,6 +294,7 @@ export default function Toolbar() {
         </span>
       )}
     </div>
+  </>
   );
 }
 
