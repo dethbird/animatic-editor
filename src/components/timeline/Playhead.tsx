@@ -7,7 +7,8 @@ interface PlayheadProps {
 
 /**
  * Playhead — a vertical red line indicating the current time.
- * Positioned absolutely within the track area.
+ * Positioned absolutely within the track area. The left offset includes
+ * LABEL_WIDTH (80px) so the line aligns with the clip area, not the labels.
  */
 export default function Playhead({ pxPerSecond }: PlayheadProps) {
   const currentTime = useAppStore((s) => s.currentTime);
