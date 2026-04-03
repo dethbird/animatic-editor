@@ -21,6 +21,8 @@ pub fn run() {
             // media
             commands::media::probe_media,
             commands::media::download_asset,
+            // export
+            commands::export::start_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

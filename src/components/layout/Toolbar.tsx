@@ -8,6 +8,7 @@ import {
   ensureProjectSaved,
 } from "../../features/project/projectActions";
 import { runImport, type FetchProgress } from "../../features/importer/assetFetcher";
+import { exportAction } from "../../features/export/exportActions";
 import type { FountainImportPayload } from "../../types/import";
 import { generateId } from "../../lib/ids";
 
@@ -18,8 +19,12 @@ export default function Toolbar() {
   const project = useAppStore((s) => s.project);
   const dirty = useAppStore((s) => s.dirty);
   const addAsset = useAppStore((s) => s.addAsset);
+  const exportStatus = useAppStore((s) => s.exportStatus);
+  const exportProgress = useAppStore((s) => s.exportProgress);
+  const resetExport = useAppStore((s) => s.resetExport);
 
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const isExporting = exportStatus === "running";
 
   // ── New ───────────────────────────────────────────────────────────────────
   const handleNew = async () => {
@@ -119,6 +124,15 @@ export default function Toolbar() {
     }
   };
 
+  // ── Export MP4 ────────────────────────────────────────────────────────────
+  const handleExport = async () => {
+    if (!project) return;
+    const outPath = await exportAction();
+    if (outPath) {
+      console.log("Export saved to:", outPath);
+    }
+  };
+
   // ── Add Audio ─────────────────────────────────────────────────────────────
   const handleAddAudio = async () => {
     if (!project) return;
@@ -184,11 +198,31 @@ export default function Toolbar() {
       <div className="w-px h-4 bg-[#444] mx-2" />
 
       <ToolbarButton
-        label="Export MP4"
+        label={isExporting ? `Exporting ${exportProgress}%…` : "Export MP4"}
         highlight
-        disabled={noProject}
-        onClick={() => window.alert("Export coming in Phase 8.")}
+        disabled={noProject || isExporting}
+        onClick={handleExport}
       />
+
+      {/* Export done/error banners */}
+      {exportStatus === "done" && (
+        <span
+          className="ml-2 text-[11px] text-green-400 italic cursor-pointer"
+          onClick={resetExport}
+          title="Click to dismiss"
+        >
+          Export complete ✓
+        </span>
+      )}
+      {exportStatus === "error" && (
+        <span
+          className="ml-2 text-[11px] text-red-400 italic cursor-pointer"
+          onClick={resetExport}
+          title="Click to dismiss"
+        >
+          Export failed — see console
+        </span>
+      )}
 
       {/* Import progress indicator */}
       {importStatus && (
