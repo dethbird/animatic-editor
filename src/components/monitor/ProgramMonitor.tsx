@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/useAppStore";
 import { useActiveVideoClip } from "../../lib/timelineSelectors";
 
@@ -22,8 +23,7 @@ export default function ProgramMonitor() {
       <div className="flex-1 flex items-center justify-center relative">
         {assetPath ? (
           <img
-            // Tauri v2: use the asset protocol to load local files
-            src={`asset://localhost/${encodeURIComponent(assetPath)}`}
+            src={convertFileSrc(assetPath)}
             alt="Current frame"
             className="max-w-full max-h-full object-contain"
             draggable={false}

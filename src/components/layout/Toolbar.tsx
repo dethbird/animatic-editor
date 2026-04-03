@@ -5,9 +5,10 @@ import {
   newProjectAction,
   openProjectAction,
   saveProjectAction,
-  ensureProjectSaved,
+  dirFromPath,
 } from "../../features/project/projectActions";
 import { runImport, type FetchProgress } from "../../features/importer/assetFetcher";
+import { parseFountain } from "../../features/importer/fountainParser";
 import { exportAction } from "../../features/export/exportActions";
 import type { FountainImportPayload } from "../../types/import";
 import { generateId } from "../../lib/ids";
@@ -63,35 +64,60 @@ export default function Toolbar() {
     await saveProjectAction();
   };
 
-  // ── Import Fountain JSON ──────────────────────────────────────────────────
+  // ── Import Fountain Script ────────────────────────────────────────────────
   const handleImport = async () => {
     if (!project) {
       notify("Create a project first (New).", "error");
       return;
     }
 
-    // Gate: project must be saved so we know the media/ dir location
-    const projectDir = await ensureProjectSaved();
-    if (!projectDir) return; // user cancelled save dialog
+    // Gate: project must be saved so we know where to place downloaded media.
+    // We never auto-open a save dialog here — that causes a confusing "overwrite?" flow.
+    if (!project.filePath) {
+      notify(
+        "Save your project first (Save button), then import — media is placed next to the project file.",
+        "error",
+      );
+      return;
+    }
+    const projectDir = dirFromPath(project.filePath);
 
-    // Pick the Fountain JSON file
+    // Pick the .fountain file
     const filePath = await invoke<string | null>("open_file_dialog", {
-      filters: [{ name: "Fountain JSON", extensions: ["json"] }],
+      filters: [{ name: "Fountain Script", extensions: ["fountain"] }],
     });
-    if (!filePath) return;
-
-    // Read + parse
-    let payload: FountainImportPayload;
-    try {
-      const raw = await invoke<string>("read_text_file", { path: filePath });
-      payload = JSON.parse(raw) as FountainImportPayload;
-    } catch {
-      notify("Failed to read or parse the JSON file.", "error");
+    if (!filePath) {
+      setImportStatus(null);
       return;
     }
 
-    if (!Array.isArray(payload.panels) || payload.panels.length === 0) {
-      notify("No panels found in the JSON file.", "error");
+    // Read + parse fountain text
+    let payload: FountainImportPayload;
+    try {
+      const raw = await invoke<string>("read_text_file", { path: filePath });
+      const { title, panels } = parseFountain(raw);
+
+      if (panels.length === 0) {
+        notify("No panels (####) found in the .fountain file.", "error");
+        return;
+      }
+
+      const fileName = filePath.split("/").pop()?.replace(/\.fountain$/i, "") ?? "Untitled";
+      payload = {
+        title: title ?? fileName,
+        panels: panels.map((p) => ({
+          id: p.id,
+          title: p.title || undefined,
+          image: p.imageUrl ?? undefined,
+          audio: p.audioUrl ?? undefined,
+          duration: p.duration ?? undefined,
+          act: p.act ?? undefined,
+          scene: p.scene ?? undefined,
+          sequence: p.sequence ?? undefined,
+        })),
+      };
+    } catch {
+      notify("Failed to read or parse the .fountain file.", "error");
       return;
     }
 
@@ -104,11 +130,13 @@ export default function Toolbar() {
 
     try {
       const report = await runImport(payload, projectDir, onProgress);
-      const msg =
-        report.failed > 0
-          ? `Import done. ${report.downloaded} ready, ${report.failed} failed.`
-          : `Import done. ${report.downloaded} assets, timeline built.`;
-      setImportStatus(msg);
+      if (report.failed > 0) {
+        const firstError = report.assets.find((a) => a.status === 'error')?.error ?? 'unknown error';
+        const msg = `Import done. ${report.downloaded} ready, ${report.failed} failed. First error: ${firstError}`;
+        notify(msg, "error");
+      } else {
+        setImportStatus(`Import done. ${report.downloaded} assets, timeline built.`);
+      }
     } catch (err) {
       console.error(err);
       setImportStatus("Import failed — see console for details.");
@@ -229,7 +257,7 @@ export default function Toolbar() {
       <div className="w-px h-4 bg-[#444] mx-2" />
 
       <ToolbarButton
-        label="Import Fountain JSON"
+        label="Import .fountain"
         onClick={handleImport}
         disabled={noProject}
       />

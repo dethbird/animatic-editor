@@ -109,6 +109,7 @@ export async function runImport(
         report.assets.push({ url, assetId: placeholder.id, status: 'ready' });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[import] failed: ${url}\n  reason: ${errorMsg}`);
         useAppStore.getState().updateAsset(placeholder.id, { status: 'error', error: errorMsg });
         report.failed++;
         report.assets.push({ url, assetId: placeholder.id, status: 'error', error: errorMsg });

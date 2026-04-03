@@ -1,5 +1,5 @@
-// Shape of the Fountain-derived JSON file accepted at import time.
-// The app does not parse raw .fountain files in MVP — it expects pre-parsed JSON.
+// Shape of the parsed Fountain import payload.
+// The app parses .fountain files directly via fountainParser.ts.
 
 export type FountainPanel = {
   id: string;

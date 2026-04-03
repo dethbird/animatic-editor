@@ -5,6 +5,17 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 
+const USER_AGENT: &str = concat!("AnimaticEditor/", env!("CARGO_PKG_VERSION"), " (Tauri)");
+
+/// Build a shared reqwest client with a proper User-Agent.
+/// CDNs (e.g. Midjourney, Cloudinary) reject requests that arrive without one.
+fn client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .context("building HTTP client")
+}
+
 /// Download a remote URL into `<project_dir>/media/`, deduplicating by URL hash.
 ///
 /// If the file was previously downloaded (same URL → same filename), the cached
@@ -28,7 +39,9 @@ pub async fn download_url(url: &str, project_dir: &Path) -> Result<DownloadResul
     }
 
     // 3. Fetch the URL
-    let response = reqwest::get(url)
+    let response = client()?
+        .get(url)
+        .send()
         .await
         .with_context(|| format!("downloading {}", url))?;
 
