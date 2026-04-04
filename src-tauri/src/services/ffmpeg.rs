@@ -222,7 +222,7 @@ async fn pipeline(
             "-i", video_arg,
             "-i", audio_arg,
             "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k",
+            "-c:a", "aac", "-b:a", "320k",
             "-shortest",
             "-y", out_arg,
         ])
@@ -282,7 +282,7 @@ async fn mix_audio(
 
         input_paths.push(local);
         filter_chains.push(format!(
-            "[{}:a]atrim=start={:.4}:duration={:.4},adelay={}|{},volume={:.4}[{}]",
+            "[{}:a]atrim=start={:.4}:duration={:.4},asetpts=PTS-STARTPTS,adelay={}|{},volume={:.4}[{}]",
             idx, in_pt, dur, delay_ms, delay_ms, vol, label,
         ));
         labels.push(format!("[{}]", label));
