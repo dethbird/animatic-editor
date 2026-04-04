@@ -1,3 +1,5 @@
+import { useState, useEffect, useRef } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/useAppStore";
 import { getTrackById } from "../../lib/timelineSelectors";
 import type { Clip } from "../../types/timeline";
@@ -93,12 +95,97 @@ export default function InspectorPanel() {
 // ── Asset info view ───────────────────────────────────────────────────────────
 
 function AssetInfo({ asset }: { asset: Asset }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  // Hold refs to the AudioContext and active source node so we can stop them
+  const acRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  function stopAudio() {
+    sourceRef.current?.stop();
+    sourceRef.current = null;
+    acRef.current?.close();
+    acRef.current = null;
+    setIsPlaying(false);
+  }
+
+  // Stop playback whenever the asset changes or the component unmounts
+  useEffect(() => {
+    return () => stopAudio();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset.id]);
+
+  async function togglePlay() {
+    if (isPlaying) {
+      stopAudio();
+      return;
+    }
+    if (!asset.localPath) return;
+
+    setIsLoading(true);
+    try {
+      const url = convertFileSrc(asset.localPath);
+      const resp = await fetch(url);
+      const rawBuf = await resp.arrayBuffer();
+
+      const ac = new AudioContext();
+      acRef.current = ac;
+      const buffer = await ac.decodeAudioData(rawBuf);
+
+      const source = ac.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ac.destination);
+      source.onended = () => {
+        setIsPlaying(false);
+        sourceRef.current = null;
+      };
+      source.start(0);
+      sourceRef.current = source;
+      setIsPlaying(true);
+    } catch (err) {
+      console.error("Audio preview failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   const statusColor =
     asset.status === "ready" ? "text-green-400" :
     asset.status === "fetching" ? "text-yellow-400" : "text-red-400";
 
   return (
     <div className="p-3 flex flex-col gap-3">
+      {/* Image thumbnail */}
+      {asset.type === "image" && asset.localPath && (
+        <div className="w-full rounded overflow-hidden bg-black border border-[#2a2a2a]">
+          <img
+            src={convertFileSrc(asset.localPath)}
+            alt={asset.name}
+            className="w-full object-contain max-h-40"
+            draggable={false}
+          />
+        </div>
+      )}
+
+      {/* Audio preview */}
+      {asset.type === "audio" && asset.localPath && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            onClick={togglePlay}
+            disabled={isLoading}
+            className={[
+              "w-full py-1.5 px-3 rounded text-[11px] font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50",
+              isPlaying
+                ? "bg-green-800 hover:bg-green-700 text-green-100"
+                : "bg-[#2a2a2a] hover:bg-[#333] text-[#ccc]",
+            ].join(" ")}
+          >
+            <span>{isLoading ? "⋯" : isPlaying ? "⏸" : "▶"}</span>
+            <span>{isLoading ? "Loading…" : isPlaying ? "Pause" : "Play Preview"}</span>
+          </button>
+        </div>
+      )}
+
       <Section label="Asset">
         <ReadOnly label="Name" value={asset.name} />
         <ReadOnly label="Type" value={asset.type} />
