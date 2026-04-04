@@ -64,7 +64,7 @@ export default function AssetBin() {
       start,
       duration,
       inPoint: 0,
-      label: selectedAsset.name,
+      label: selectedAsset.label ?? selectedAsset.name,
       volume: clipType === "audio" ? 1.0 : undefined,
     };
     addClip(selectedTrackId, clip);
@@ -86,8 +86,12 @@ export default function AssetBin() {
     insertClip(getTrackEndTime(selectedTrack));
   }
 
-  const images = project.assets.filter((a) => a.type === "image");
-  const audio = project.assets.filter((a) => a.type === "audio");
+  const displayName = (a: { label?: string; name: string }) => a.label ?? a.name;
+  const byDisplayName = (a: { label?: string; name: string }, b: { label?: string; name: string }) =>
+    displayName(a).localeCompare(displayName(b));
+
+  const images = project.assets.filter((a) => a.type === "image").sort(byDisplayName);
+  const audio = project.assets.filter((a) => a.type === "audio").sort(byDisplayName);
 
   return (
     <div className="flex flex-col">
@@ -173,7 +177,7 @@ export default function AssetBin() {
           {images.map((asset) => (
             <AssetRow
               key={asset.id}
-              name={asset.name}
+              name={displayName(asset)}
               meta={asset.width ? `${asset.width}×${asset.height}` : undefined}
               status={asset.status}
               selected={asset.id === selectedAssetId}
@@ -188,7 +192,7 @@ export default function AssetBin() {
           {audio.map((asset) => (
             <AssetRow
               key={asset.id}
-              name={asset.name}
+              name={displayName(asset)}
               meta={asset.duration ? `${asset.duration.toFixed(1)}s` : undefined}
               status={asset.status}
               selected={asset.id === selectedAssetId}

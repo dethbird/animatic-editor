@@ -17,6 +17,7 @@ export default function InspectorPanel() {
   const updateClip = useAppStore((s) => s.updateClip);
   const removeClip = useAppStore((s) => s.removeClip);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const updateAsset = useAppStore((s) => s.updateAsset);
 
   // ── No project ────────────────────────────────────────────────────────────
   if (!project) {
@@ -86,7 +87,7 @@ export default function InspectorPanel() {
     if (!asset) {
       return <div className="p-4 text-[#555] text-xs italic select-none">Asset not found.</div>;
     }
-    return <AssetInfo asset={asset} />;
+    return <AssetInfo asset={asset} updateAsset={updateAsset} />;
   }
 
   return <div className="p-4 text-[#555] text-xs italic select-none">No clip selected.</div>;
@@ -94,7 +95,7 @@ export default function InspectorPanel() {
 
 // ── Asset info view ───────────────────────────────────────────────────────────
 
-function AssetInfo({ asset }: { asset: Asset }) {
+function AssetInfo({ asset, updateAsset }: { asset: Asset; updateAsset: (id: string, patch: Partial<Asset>) => void }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // Hold refs to the AudioContext and active source node so we can stop them
@@ -187,7 +188,17 @@ function AssetInfo({ asset }: { asset: Asset }) {
       )}
 
       <Section label="Asset">
-        <ReadOnly label="Name" value={asset.name} />
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] text-[#888] w-20 shrink-0">Label</label>
+          <input
+            type="text"
+            value={asset.label ?? ""}
+            placeholder={asset.name}
+            onChange={(e) => updateAsset(asset.id, { label: e.target.value || undefined })}
+            className="flex-1 bg-[#2a2a2a] border border-[#3a3a3a] rounded px-2 py-0.5 text-xs text-[#ddd] focus:outline-none focus:border-blue-500 placeholder-[#555]"
+          />
+        </div>
+        <ReadOnly label="Filename" value={asset.name} />
         <ReadOnly label="Type" value={asset.type} />
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[#888] w-20 shrink-0">Status</span>

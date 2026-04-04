@@ -5,7 +5,8 @@ export type AssetType = 'image' | 'audio';
 export type Asset = {
   id: string;
   type: AssetType;
-  name: string;
+  name: string;             // original filename / derived name — never changed
+  label?: string;           // user-editable display name override
   sourceUrl?: string;       // original remote URL if imported from URL
   localPath?: string;       // absolute path to cached/local file
   contentHash?: string;     // sha256 of the local file
