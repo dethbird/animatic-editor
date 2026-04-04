@@ -30,13 +30,16 @@ export default function AppShell() {
   const removeClip = useAppStore((s) => s.removeClip);
   const clearSelection = useAppStore((s) => s.clearSelection);
 
-  // Delete / Backspace removes the selected clip when focus is not in an input.
+  // Delete removes the selected clip. Only the `Delete` key is used — `Backspace`
+  // is intentionally excluded because on Linux/Tauri the mouse back-button fires a
+  // native Backspace keydown that would accidentally delete clips on click.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (e.key !== "Delete") return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (!selectedClipId || !selectedTrackId) return;
+      e.preventDefault();
       removeClip(selectedTrackId, selectedClipId);
       clearSelection();
     }

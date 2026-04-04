@@ -1,123 +1,144 @@
 import { useAppStore } from "../../store/useAppStore";
 import { getTrackById } from "../../lib/timelineSelectors";
 import type { Clip } from "../../types/timeline";
+import type { Asset } from "../../types/media";
 
 /**
- * InspectorPanel — edits properties of the selected clip.
- * Shows a message when nothing is selected.
+ * InspectorPanel — shows properties of the selected clip, or info about the
+ * selected asset when no clip is selected.
  */
 export default function InspectorPanel() {
   const project = useAppStore((s) => s.project);
   const selectedClipId = useAppStore((s) => s.selectedClipId);
   const selectedTrackId = useAppStore((s) => s.selectedTrackId);
+  const selectedAssetId = useAppStore((s) => s.selectedAssetId);
   const updateClip = useAppStore((s) => s.updateClip);
+  const removeClip = useAppStore((s) => s.removeClip);
+  const clearSelection = useAppStore((s) => s.clearSelection);
 
-  if (!project || !selectedClipId || !selectedTrackId) {
+  // ── No project ────────────────────────────────────────────────────────────
+  if (!project) {
+    return <div className="p-4 text-[#555] text-xs italic select-none">No clip selected.</div>;
+  }
+
+  // ── Clip selected ─────────────────────────────────────────────────────────
+  if (selectedClipId && selectedTrackId) {
+    const track = getTrackById(project, selectedTrackId);
+    const clip = track?.clips.find((c) => c.id === selectedClipId);
+
+    if (!clip) {
+      return <div className="p-4 text-[#555] text-xs italic select-none">Clip not found.</div>;
+    }
+
+    const patch = (p: Partial<Clip>) => updateClip(selectedTrackId, selectedClipId, p);
+
     return (
-      <div className="p-4 text-[#555] text-xs italic select-none">
-        No clip selected.
+      <div className="p-3 flex flex-col gap-3">
+        <Section label="Clip">
+          <Field label="Label" type="text" value={clip.label ?? ""} onChange={(v) => patch({ label: v as string })} />
+          <Field label="Start (s)" type="number" value={clip.start} onChange={(v) => patch({ start: Math.max(0, v as number) })} />
+          <Field label="Duration (s)" type="number" value={clip.duration} onChange={(v) => patch({ duration: Math.max(0.04, v as number) })} />
+          <Field label="In Point (s)" type="number" value={clip.inPoint} onChange={(v) => patch({ inPoint: Math.max(0, v as number) })} />
+        </Section>
+
+        {clip.type === "audio" && (
+          <Section label="Audio">
+            <Field label="Volume" type="number" value={clip.volume ?? 1} onChange={(v) => patch({ volume: Math.min(1, Math.max(0, v as number)) })} step={0.05} min={0} max={1} />
+            <Field label="Fade In (s)" type="number" value={clip.fadeIn ?? 0} onChange={(v) => patch({ fadeIn: Math.max(0, v as number) })} />
+            <Field label="Fade Out (s)" type="number" value={clip.fadeOut ?? 0} onChange={(v) => patch({ fadeOut: Math.max(0, v as number) })} />
+          </Section>
+        )}
+
+        {clip.type === "image" && (
+          <Section label="Transform">
+            <Field label="Scale" type="number" value={clip.transform?.scale ?? 1} onChange={(v) => patch({ transform: { ...clip.transform, scale: v as number } })} step={0.05} />
+            <Field label="X" type="number" value={clip.transform?.x ?? 0} onChange={(v) => patch({ transform: { ...clip.transform, x: v as number } })} />
+            <Field label="Y" type="number" value={clip.transform?.y ?? 0} onChange={(v) => patch({ transform: { ...clip.transform, y: v as number } })} />
+          </Section>
+        )}
+
+        {clip.scriptRef && (
+          <Section label="Script Reference">
+            <ReadOnly label="Panel" value={clip.scriptRef.panelId ?? "—"} />
+            <ReadOnly label="Act" value={clip.scriptRef.act ?? "—"} />
+            <ReadOnly label="Scene" value={clip.scriptRef.scene ?? "—"} />
+            <ReadOnly label="Sequence" value={clip.scriptRef.sequence ?? "—"} />
+          </Section>
+        )}
+
+        <Section label="Actions">
+          <button
+            onClick={() => { removeClip(selectedTrackId, selectedClipId); clearSelection(); }}
+            className="w-full py-1 text-[11px] rounded bg-red-900/50 hover:bg-red-800/70 text-red-300 border border-red-800 transition-colors"
+          >
+            Remove from Timeline
+          </button>
+        </Section>
       </div>
     );
   }
 
-  const track = getTrackById(project, selectedTrackId);
-  const clip = track?.clips.find((c) => c.id === selectedClipId);
-
-  if (!clip) {
-    return (
-      <div className="p-4 text-[#555] text-xs italic select-none">
-        Clip not found.
-      </div>
-    );
+  // ── Asset selected ────────────────────────────────────────────────────────
+  if (selectedAssetId) {
+    const asset = project.assets.find((a) => a.id === selectedAssetId);
+    if (!asset) {
+      return <div className="p-4 text-[#555] text-xs italic select-none">Asset not found.</div>;
+    }
+    return <AssetInfo asset={asset} />;
   }
 
-  const patch = (p: Partial<Clip>) => updateClip(selectedTrackId, selectedClipId, p);
+  return <div className="p-4 text-[#555] text-xs italic select-none">No clip selected.</div>;
+}
+
+// ── Asset info view ───────────────────────────────────────────────────────────
+
+function AssetInfo({ asset }: { asset: Asset }) {
+  const statusColor =
+    asset.status === "ready" ? "text-green-400" :
+    asset.status === "fetching" ? "text-yellow-400" : "text-red-400";
 
   return (
     <div className="p-3 flex flex-col gap-3">
-      <Section label="Clip">
-        <Field
-          label="Label"
-          type="text"
-          value={clip.label ?? ""}
-          onChange={(v) => patch({ label: v as string })}
-        />
-        <Field
-          label="Start (s)"
-          type="number"
-          value={clip.start}
-          onChange={(v) => patch({ start: Math.max(0, v as number) })}
-        />
-        <Field
-          label="Duration (s)"
-          type="number"
-          value={clip.duration}
-          onChange={(v) => patch({ duration: Math.max(0.04, v as number) })}
-        />
-        <Field
-          label="In Point (s)"
-          type="number"
-          value={clip.inPoint}
-          onChange={(v) => patch({ inPoint: Math.max(0, v as number) })}
-        />
+      <Section label="Asset">
+        <ReadOnly label="Name" value={asset.name} />
+        <ReadOnly label="Type" value={asset.type} />
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-[#888] w-20 shrink-0">Status</span>
+          <span className={`text-[11px] ${statusColor}`}>{asset.status}</span>
+        </div>
       </Section>
 
-      {clip.type === "audio" && (
+      {asset.type === "image" && (asset.width || asset.height) && (
+        <Section label="Image">
+          {asset.width && asset.height && (
+            <ReadOnly label="Size" value={`${asset.width} × ${asset.height} px`} />
+          )}
+        </Section>
+      )}
+
+      {asset.type === "audio" && (
         <Section label="Audio">
-          <Field
-            label="Volume"
-            type="number"
-            value={clip.volume ?? 1}
-            onChange={(v) => patch({ volume: Math.min(1, Math.max(0, v as number)) })}
-            step={0.05}
-            min={0}
-            max={1}
-          />
-          <Field
-            label="Fade In (s)"
-            type="number"
-            value={clip.fadeIn ?? 0}
-            onChange={(v) => patch({ fadeIn: Math.max(0, v as number) })}
-          />
-          <Field
-            label="Fade Out (s)"
-            type="number"
-            value={clip.fadeOut ?? 0}
-            onChange={(v) => patch({ fadeOut: Math.max(0, v as number) })}
-          />
+          {asset.duration !== undefined && (
+            <ReadOnly label="Duration" value={`${asset.duration.toFixed(2)}s`} />
+          )}
+          {asset.sampleRate !== undefined && (
+            <ReadOnly label="Sample Rate" value={`${asset.sampleRate} Hz`} />
+          )}
+          {asset.channels !== undefined && (
+            <ReadOnly label="Channels" value={String(asset.channels)} />
+          )}
         </Section>
       )}
 
-      {clip.type === "image" && (
-        <Section label="Transform">
-          <Field
-            label="Scale"
-            type="number"
-            value={clip.transform?.scale ?? 1}
-            onChange={(v) => patch({ transform: { ...clip.transform, scale: v as number } })}
-            step={0.05}
-          />
-          <Field
-            label="X"
-            type="number"
-            value={clip.transform?.x ?? 0}
-            onChange={(v) => patch({ transform: { ...clip.transform, x: v as number } })}
-          />
-          <Field
-            label="Y"
-            type="number"
-            value={clip.transform?.y ?? 0}
-            onChange={(v) => patch({ transform: { ...clip.transform, y: v as number } })}
-          />
+      {asset.sourceUrl && (
+        <Section label="Source">
+          <div className="text-[10px] text-[#666] break-all leading-relaxed">{asset.sourceUrl}</div>
         </Section>
       )}
 
-      {clip.scriptRef && (
-        <Section label="Script Reference">
-          <ReadOnly label="Panel" value={clip.scriptRef.panelId ?? "—"} />
-          <ReadOnly label="Act" value={clip.scriptRef.act ?? "—"} />
-          <ReadOnly label="Scene" value={clip.scriptRef.scene ?? "—"} />
-          <ReadOnly label="Sequence" value={clip.scriptRef.sequence ?? "—"} />
+      {asset.localPath && (
+        <Section label="Local Path">
+          <div className="text-[10px] text-[#666] break-all leading-relaxed">{asset.localPath}</div>
         </Section>
       )}
     </div>
