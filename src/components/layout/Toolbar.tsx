@@ -32,6 +32,9 @@ export default function Toolbar() {
   // Inline "New Project" prompt — replaces window.prompt which crashes Tauri on Linux
   const [showNewInput, setShowNewInput] = useState(false);
   const [newProjectName, setNewProjectName] = useState("Untitled Animatic");
+  // Inline "Add Image URL" prompt
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
 
   const isExporting = exportStatus === "running";
 
@@ -170,6 +173,49 @@ export default function Toolbar() {
     }
   };
 
+  // ── Add Image URL ─────────────────────────────────────────────────────────
+  const handleAddImageUrl = async () => {
+    const url = imageUrl.trim();
+    if (!url || !project) return;
+
+    if (!project.filePath) {
+      notify("Save your project first — media is placed next to the project file.", "error");
+      return;
+    }
+    const projectDir = dirFromPath(project.filePath);
+
+    setShowUrlInput(false);
+    setImageUrl("");
+    notify("Downloading image…");
+
+    try {
+      const dl = await invoke<{ localPath: string; contentHash: string; fetchedAt: string }>(
+        "download_asset",
+        { url, projectDir },
+      );
+
+      const info = await invoke<{
+        kind: string; width?: number; height?: number; duration?: number;
+      }>("probe_media", { path: dl.localPath });
+
+      addAsset({
+        id: generateId(),
+        type: "image",
+        name: url.split("/").pop()?.split("?")[0] ?? "image",
+        sourceUrl: url,
+        localPath: dl.localPath,
+        contentHash: dl.contentHash,
+        fetchedAt: dl.fetchedAt,
+        status: "ready",
+        width: info.width,
+        height: info.height,
+      });
+      notify("Image added.");
+    } catch (err) {
+      notify(`Failed to add image URL: ${err}`, "error");
+    }
+  };
+
   // ── Export MP4 ────────────────────────────────────────────────────────────
   const handleExport = async () => {
     if (!project) return;
@@ -241,6 +287,37 @@ export default function Toolbar() {
         </div>
       )}
 
+      {/* Inline "Add Image URL" input */}
+      {showUrlInput && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1e2a3a] border-b border-blue-800 shrink-0">
+          <span className="text-[11px] text-blue-300 shrink-0">Image URL:</span>
+          <input
+            autoFocus
+            type="text"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleAddImageUrl();
+              if (e.key === "Escape") { setShowUrlInput(false); setImageUrl(""); }
+            }}
+            placeholder="https://example.com/image.png"
+            className="flex-1 bg-[#0d1b2a] border border-blue-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-blue-400"
+          />
+          <button
+            onClick={handleAddImageUrl}
+            className="px-3 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => { setShowUrlInput(false); setImageUrl(""); }}
+            className="px-3 py-0.5 bg-[#333] hover:bg-[#444] text-[#ccc] text-xs rounded"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 px-3 py-1.5 bg-[#252525] border-b border-[#333] shrink-0 select-none flex-wrap">
       <span className="text-[#aaa] font-semibold text-xs tracking-widest mr-4 uppercase">
         Animatic Editor
@@ -264,6 +341,11 @@ export default function Toolbar() {
       <ToolbarButton
         label="Add Image"
         onClick={handleAddImage}
+        disabled={noProject}
+      />
+      <ToolbarButton
+        label="Add Image URL"
+        onClick={() => { setImageUrl(""); setShowUrlInput(true); }}
         disabled={noProject}
       />
       <ToolbarButton

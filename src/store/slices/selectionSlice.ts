@@ -17,10 +17,10 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
   selectedAssetId: null,
 
   selectClip: (trackId, clipId) =>
-    set({ selectedTrackId: trackId, selectedClipId: clipId, selectedAssetId: null }),
+    set({ selectedTrackId: trackId, selectedClipId: clipId }),
 
   selectAsset: (assetId) =>
-    set({ selectedAssetId: assetId, selectedClipId: null, selectedTrackId: null }),
+    set({ selectedAssetId: assetId, selectedClipId: null }),
 
   clearSelection: () =>
     set({ selectedClipId: null, selectedTrackId: null, selectedAssetId: null }),

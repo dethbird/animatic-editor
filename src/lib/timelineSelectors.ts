@@ -64,3 +64,9 @@ export function getActiveAudioClips(project: Project | null, currentTime: number
     .filter((t) => t.kind === 'audio' && !t.muted)
     .flatMap((t) => getClipsAtTime(t, currentTime));
 }
+
+/** Returns the end time (seconds) of the last clip on a track, or 0 for empty tracks. */
+export function getTrackEndTime(track: Track): number {
+  if (track.clips.length === 0) return 0;
+  return Math.max(...track.clips.map((c) => c.start + c.duration));
+}
