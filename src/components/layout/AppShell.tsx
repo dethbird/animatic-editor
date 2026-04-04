@@ -29,23 +29,34 @@ export default function AppShell() {
   const selectedTrackId = useAppStore((s) => s.selectedTrackId);
   const removeClip = useAppStore((s) => s.removeClip);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const isPlaying = useAppStore((s) => s.isPlaying);
+  const play = useAppStore((s) => s.play);
+  const pause = useAppStore((s) => s.pause);
 
-  // Delete removes the selected clip. Only the `Delete` key is used — `Backspace`
-  // is intentionally excluded because on Linux/Tauri the mouse back-button fires a
-  // native Backspace keydown that would accidentally delete clips on click.
+  // Global keyboard shortcuts.
+  // `Backspace` is intentionally excluded from Delete — on Linux/Tauri the mouse
+  // back-button fires a native Backspace keydown that would accidentally delete clips.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Delete") return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (!selectedClipId || !selectedTrackId) return;
-      e.preventDefault();
-      removeClip(selectedTrackId, selectedClipId);
-      clearSelection();
+
+      if (e.key === " ") {
+        e.preventDefault();
+        isPlaying ? pause() : play();
+        return;
+      }
+
+      if (e.key === "Delete") {
+        if (!selectedClipId || !selectedTrackId) return;
+        e.preventDefault();
+        removeClip(selectedTrackId, selectedClipId);
+        clearSelection();
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedClipId, selectedTrackId, removeClip, clearSelection]);
+  }, [selectedClipId, selectedTrackId, removeClip, clearSelection, isPlaying, play, pause]);
 
   return (
     <div className="flex flex-col h-full bg-[#1a1a1a] overflow-hidden">
