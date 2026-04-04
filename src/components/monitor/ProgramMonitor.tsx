@@ -20,17 +20,23 @@ export default function ProgramMonitor() {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-black overflow-hidden">
-      <div className="flex-1 flex items-center justify-center relative">
-        {assetPath ? (
-          <img
-            src={convertFileSrc(assetPath)}
-            alt="Current frame"
-            className="max-w-full max-h-full object-contain"
-            draggable={false}
-          />
-        ) : (
-          <div className="text-[#444] text-sm select-none">No signal</div>
-        )}
+      {/* Outer container — fills available space, centers the 16:9 frame */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        {/* 16:9 frame — largest rectangle that fits the available space */}
+        <div className="max-w-full max-h-full bg-black" style={{ aspectRatio: "16/9" }}>
+          {assetPath ? (
+            <img
+              src={convertFileSrc(assetPath)}
+              alt="Current frame"
+              className="w-full h-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-[#444] text-sm select-none">No signal</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Timecode overlay */}
