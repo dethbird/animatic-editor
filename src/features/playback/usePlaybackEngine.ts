@@ -6,6 +6,10 @@
  *  2. Web Audio API scheduling for all audio clips in the active sequence,
  *     respecting volume, inPoint, fadeIn, and fadeOut.
  *
+ * A fresh AudioContext is created per play session so that WebKitGTK's
+ * silent-after-interaction bug is avoided. Raw ArrayBuffers are cached
+ * across sessions (context-independent); decoding is repeated per session.
+ *
  * Call this hook once at the AppShell level. It has no return value.
  */
 
@@ -15,23 +19,13 @@ import { useAppStore } from '../../store/useAppStore';
 import { getActiveSequence } from '../../lib/timelineSelectors';
 
 export function usePlaybackEngine(): void {
-  // Only subscribe to isPlaying — all other state is read via getState() to
-  // avoid stale closures and prevent unnecessary re-renders.
   const isPlaying = useAppStore((s) => s.isPlaying);
 
   const acRef = useRef<AudioContext | null>(null);
-  const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const bufferCacheRef = useRef<Map<string, ArrayBuffer>>(new Map());
   const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const rafIdRef = useRef<number | null>(null);
-
-  // ── Stable helpers (only touch refs, no closure over render values) ──────
-
-  function getAc(): AudioContext {
-    if (!acRef.current || acRef.current.state === 'closed') {
-      acRef.current = new AudioContext();
-    }
-    return acRef.current;
-  }
+  const genRef = useRef(0);
 
   function stopAllSources() {
     for (const src of scheduledSourcesRef.current) {
@@ -54,15 +48,26 @@ export function usePlaybackEngine(): void {
     if (!isPlaying) {
       cancelRaf();
       stopAllSources();
+      // Close AudioContext so next play starts fresh (avoids WebKitGTK
+      // auto-suspend bugs where resume() succeeds but output is silent).
+      if (acRef.current) {
+        acRef.current.close().catch(() => {});
+        acRef.current = null;
+      }
       return;
     }
 
-    // Read current position directly from store (avoids stale closure).
+    // Generation counter — every await checks this to abort if a newer
+    // play session has started.
+    const gen = ++genRef.current;
+
     const startSeqTime = useAppStore.getState().currentTime;
     const startWall = performance.now();
 
     // ── RAF loop: advances store currentTime ────────────────────────────────
     function tick() {
+      if (gen !== genRef.current) return;
+
       const elapsed = (performance.now() - startWall) / 1000;
       const newTime = startSeqTime + elapsed;
 
@@ -71,11 +76,10 @@ export function usePlaybackEngine(): void {
       const dur = seq?.duration ?? 0;
 
       if (dur > 0 && newTime >= dur) {
-        // Reached end — clamp and stop.
         useAppStore.getState().setCurrentTime(dur);
         useAppStore.getState().pause();
         stopAllSources();
-        return; // do NOT re-queue another frame
+        return;
       }
 
       useAppStore.getState().setCurrentTime(newTime);
@@ -85,58 +89,61 @@ export function usePlaybackEngine(): void {
     rafIdRef.current = requestAnimationFrame(tick);
 
     // ── Audio scheduling ────────────────────────────────────────────────────
-    // Fire-and-forget async IIFE; RAF above starts immediately so the UI
-    // stay responsive even if buffer loading takes a moment.
     (async () => {
-      const ac = getAc();
+      // Fresh AudioContext per play session.
+      const ac = new AudioContext();
+      acRef.current = ac;
       await ac.resume();
+
+      if (gen !== genRef.current) { ac.close().catch(() => {}); return; }
 
       const proj = useAppStore.getState().project;
       const seq = getActiveSequence(proj);
       if (!seq || !proj) return;
 
-      // Snapshot the AudioContext clock at the moment we begin scheduling.
-      // All clip start times are expressed relative to this base.
       const acBase = ac.currentTime;
 
       for (const track of seq.tracks) {
         if (track.kind !== 'audio' || track.muted) continue;
 
         for (const clip of track.clips) {
+          if (gen !== genRef.current) return;
           if (clip.type !== 'audio' || !clip.assetId) continue;
 
-          // Skip clips that have already ended.
           const clipEnd = clip.start + clip.duration;
           if (clipEnd <= startSeqTime) continue;
 
           const asset = proj.assets.find((a) => a.id === clip.assetId);
           if (!asset || asset.status !== 'ready' || !asset.localPath) continue;
 
-          // ── Load (and cache) the decoded audio buffer ───────────────────
-          let buffer = bufferCacheRef.current.get(asset.id);
-          if (!buffer) {
+          // ── Load (and cache) the raw ArrayBuffer, then decode per-AC ────
+          let rawBuf = bufferCacheRef.current.get(asset.id);
+          if (!rawBuf) {
             try {
               const url = convertFileSrc(asset.localPath);
               const resp = await fetch(url);
-              const ab = await resp.arrayBuffer();
-              buffer = await ac.decodeAudioData(ab);
-              bufferCacheRef.current.set(asset.id, buffer);
+              rawBuf = await resp.arrayBuffer();
+              bufferCacheRef.current.set(asset.id, rawBuf);
             } catch {
-              continue; // skip unloadable assets
+              continue;
             }
           }
 
+          if (gen !== genRef.current) return;
+
+          let buffer: AudioBuffer;
+          try {
+            // decodeAudioData detaches the ArrayBuffer, so pass a copy.
+            buffer = await ac.decodeAudioData(rawBuf.slice(0));
+          } catch {
+            continue;
+          }
+
+          if (gen !== genRef.current) return;
+
           // ── Compute scheduling parameters ───────────────────────────────
-          // How many seconds until this clip should start (could be 0 if we
-          // are already mid-clip).
           const delayInAudio = Math.max(0, clip.start - startSeqTime);
-
-          // Where inside the source buffer to begin reading from (accounts
-          // for inPoint + seeking into a clip that has already started).
           const bufferOffset = clip.inPoint + Math.max(0, startSeqTime - clip.start);
-
-          // How many seconds of audio to play (clip remainder, capped at
-          // remaining buffer length).
           const remaining = clipEnd - startSeqTime;
           const playDuration = Math.min(remaining, buffer.duration - bufferOffset);
 
@@ -144,13 +151,12 @@ export function usePlaybackEngine(): void {
 
           // ── Wire gain + fades ───────────────────────────────────────────
           const gain = ac.createGain();
-          gain.gain.setValueAtTime(clip.volume ?? 1.0, acBase + delayInAudio);
-
           const clipVol = clip.volume ?? 1.0;
+          gain.gain.setValueAtTime(clipVol, acBase + delayInAudio);
+
           const fadeInDur = clip.fadeIn ?? 0;
           const fadeOutDur = clip.fadeOut ?? 0;
 
-          // Fade in only applies when starting at (or before) the clip head.
           if (fadeInDur > 0 && delayInAudio === 0 && startSeqTime <= clip.start + fadeInDur) {
             const fadeInProgress = Math.max(0, startSeqTime - clip.start);
             const remainingFade = fadeInDur - fadeInProgress;
@@ -169,7 +175,6 @@ export function usePlaybackEngine(): void {
 
           gain.connect(ac.destination);
 
-          // ── Create and schedule the buffer source ───────────────────────
           const src = ac.createBufferSource();
           src.buffer = buffer;
           src.connect(gain);
@@ -180,7 +185,6 @@ export function usePlaybackEngine(): void {
       }
     })();
 
-    // Cleanup: runs when isPlaying flips to false (or component unmounts).
     return () => {
       cancelRaf();
       stopAllSources();
