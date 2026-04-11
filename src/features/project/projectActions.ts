@@ -3,9 +3,9 @@ import { useAppStore } from '../../store/useAppStore';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Extract the directory from an absolute file path (Linux/Mac). */
+/** Extract the directory from an absolute file path (cross-platform). */
 export function dirFromPath(filePath: string): string {
-  const idx = filePath.lastIndexOf('/');
+  const idx = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
   return idx >= 0 ? filePath.slice(0, idx) : filePath;
 }
 
