@@ -12,6 +12,7 @@ export type TimelineSlice = {
   addAsset: (asset: Asset) => void;
   updateAsset: (assetId: string, patch: Partial<Asset>) => void;
   addClip: (trackId: string, clip: Clip) => void;
+  rippleInsertClip: (trackId: string, clip: Clip) => void;
   updateClip: (trackId: string, clipId: string, patch: Partial<Clip>) => void;
   removeClip: (trackId: string, clipId: string) => void;
   moveClip: (trackId: string, clipId: string, start: number) => void;
@@ -58,6 +59,30 @@ export const createTimelineSlice: StateCreator<
           return { ...track, clips: [...track.clips, clip] };
         }),
       };
+    });
+    set({ project: { ...project, sequences, updatedAt: new Date().toISOString() }, dirty: true });
+  },
+
+  rippleInsertClip: (trackId, clip) => {
+    const { project } = get();
+    if (!project) return;
+    const sequences = project.sequences.map((seq) => {
+      if (seq.id !== project.activeSequenceId) return seq;
+      const tracks = seq.tracks.map((track) => {
+        if (track.id !== trackId) return track;
+        // Shift every clip that starts at or after the insert point.
+        const shiftedClips = track.clips.map((c) =>
+          c.start >= clip.start ? { ...c, start: c.start + clip.duration } : c,
+        );
+        return { ...track, clips: [...shiftedClips, clip] };
+      });
+      // Extend the sequence duration to cover any newly shifted clips.
+      const endTimes = tracks
+        .flatMap((t) => t.clips.map((c) => c.start + c.duration));
+      const newDuration = endTimes.length > 0
+        ? Math.max(seq.duration, ...endTimes)
+        : seq.duration;
+      return { ...seq, tracks, duration: newDuration };
     });
     set({ project: { ...project, sequences, updatedAt: new Date().toISOString() }, dirty: true });
   },

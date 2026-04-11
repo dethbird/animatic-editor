@@ -70,3 +70,11 @@ export function getTrackEndTime(track: Track): number {
   if (track.clips.length === 0) return 0;
   return Math.max(...track.clips.map((c) => c.start + c.duration));
 }
+
+/**
+ * Returns all clips on a track whose start time is >= the given time.
+ * Used by ripple insert to find clips that need to shift forward.
+ */
+export function getClipsStartingAtOrAfter(track: Track, time: number): Clip[] {
+  return track.clips.filter((c) => c.start >= time);
+}

@@ -23,9 +23,11 @@ export default function AssetBin() {
   const selectedClipId = useAppStore((s) => s.selectedClipId);
   const currentTime = useAppStore((s) => s.currentTime);
   const addClip = useAppStore((s) => s.addClip);
+  const rippleInsertClip = useAppStore((s) => s.rippleInsertClip);
   const selectClip = useAppStore((s) => s.selectClip);
 
   const [insertDuration, setInsertDuration] = useState(DEFAULT_INSERT_DURATION);
+  const [rippleMode, setRippleMode] = useState(false);
 
   if (!project || project.assets.length === 0) {
     return (
@@ -67,7 +69,11 @@ export default function AssetBin() {
       label: selectedAsset.label ?? selectedAsset.name,
       volume: clipType === "audio" ? 1.0 : undefined,
     };
-    addClip(selectedTrackId, clip);
+    if (rippleMode) {
+      rippleInsertClip(selectedTrackId, clip);
+    } else {
+      addClip(selectedTrackId, clip);
+    }
     // Auto-select the new clip to enable chaining "Insert After Selected"
     selectClip(selectedTrackId, clip.id);
   }
@@ -110,6 +116,18 @@ export default function AssetBin() {
             onBlur={() => setInsertDuration(clampDuration(insertDuration))}
             className="w-16 bg-[#1a1a1a] border border-[#333] rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none focus:border-blue-600"
           />
+          <button
+            onClick={() => setRippleMode((m) => !m)}
+            title={rippleMode ? "Ripple insert ON — clips after the insert point will shift right" : "Ripple insert OFF — clips will not shift"}
+            className={[
+              "ml-auto px-2 py-0.5 rounded text-[10px] font-medium border transition-colors",
+              rippleMode
+                ? "bg-amber-600/20 border-amber-500 text-amber-400"
+                : "bg-transparent border-[#333] text-[#555] hover:border-[#555] hover:text-[#888]",
+            ].join(" ")}
+          >
+            Ripple
+          </button>
         </div>
 
         <button
